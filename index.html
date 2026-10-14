@@ -145,7 +145,7 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .aviso{display:grid;gap:10px;padding:20px;border:2px solid var(--gold);border-radius:6px;background:var(--gold-soft);color:var(--ink)}
 .aviso b{font-size:1.1rem}
 .aviso button{justify-self:start}
-.wrap > *, .stack > *, .grid-main > *, .toolbar > *{min-width:0}
+.wrap > *, .stack > *, .grid-main > *, .toolbar > *, .panel > *, .ticket-body > *{min-width:0}
 .tabs{min-width:0;flex:1 1 auto}
 @media (max-width:700px){
   .solo-movil{display:inline-flex;justify-content:center}
@@ -1479,7 +1479,7 @@ function renderRegistro(){
       ["con la última cifra o más", sum(x => x.r.nivel >= 2 && x.r.nivel !== 1 ? 1 : 0), sum(x => x.esp1)],
       ["número exacto", sum(x => x.r.nivel === 5 ? 1 : 0), n * 6 / 10000],
     ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Más votada</th><th class="detalle-cel">5 números</th><th>¿Le atinamos?</th></tr></thead><tbody>
-      ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short",year:"2-digit"})}</td><td class="mono"><b>${x.real}</b></td>
+      ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short"})}</td><td class="mono"><b>${x.real}</b></td>
         <td class="mono">${marcar(x.consenso, x.real)}</td>
         <td class="mono detalle-cel">${x.top5.map(t => marcar(t, x.real)).join(" ")}</td>
         <td><span class="pill ${x.r.cls}">${x.r.txt}</span></td></tr>`).join("")}
@@ -1506,7 +1506,7 @@ function renderBRegistro(){
       ["con 3 números o más", sum(x => x.r.k >= 3 ? 1 : 0), n * (1 - Math.pow(1 - p3, 6))],
       ["con la superbalota", sum(x => x.r.sb ? 1 : 0), n * (1 - Math.pow(15/16, 6))],
     ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Más votada</th><th>¿Le atinamos?</th></tr></thead><tbody>
-      ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short",year:"2-digit"})}</td>
+      ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short"})}</td>
         <td>${bolas(x.real.n, x.real.sb, "chicas")}</td>
         <td>${bolasMarcadas(x.cons.n, x.cons.sb, x.real)}</td>
         <td><span class="pill ${x.r.cls}">${x.r.txt}</span></td></tr>`).join("")}
