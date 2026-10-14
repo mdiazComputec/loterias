@@ -131,6 +131,12 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .stack{display:grid;gap:28px}
 .solo-movil{display:none}
 .reg b.ok{color:var(--good);font-weight:800}
+.mejor{border:2px solid var(--accent);border-radius:6px;padding:14px;display:grid;gap:10px;background:var(--surface)}
+.mejor-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.mejor-nom{font-family:var(--f-display);font-size:1.5rem;text-transform:uppercase;color:var(--accent);line-height:1}
+.balls.mini{gap:6px}.balls.mini .ball{width:40px;height:40px;font-size:1.5rem;border-width:2px}
+.rank{font-size:.85rem}.rank td,.rank th{padding:6px 8px}
+.rank tr.lider td{background:var(--accent-soft);font-weight:700}
 .reg .no{color:var(--muted)}
 .reg td{vertical-align:middle}
 .pill.top{background:var(--gold);color:#1a1405}
@@ -683,6 +689,7 @@ function renderPronostico(A){
       </div>
     </div>
     <ul class="votos">${A.consenso.pos.map((q,i) => `<li><b class="mono">${q.digito}</b> en la ${i+1}ª cifra <span class="muted">— ${q.votos.length} de ${A.consenso.total} métodos: ${q.votos.join(", ")}</span></li>`).join("")}</ul>
+    <div id="mejor-metodo">${bloqueMejorLot(A)}</div>
     <div>
       <h3 style="margin-bottom:10px">5 números para jugar</h3>
       <ol class="top5">${A.top5.map((t,i) => `
@@ -1153,7 +1160,7 @@ function consensoBaloto(A, fecha = A.proxima){
     return univ.slice().sort((a,b) => v[b].length - v[a].length || score[b] - score[a]).map(x => ({ v: x, votos: v[x] }));
   };
   const rN = votar(fuentes, B43, sc), rS = votar(fuentesS, B16, scS);
-  return { n: rN.slice(0,5).sort((a,b) => a.v - b.v), sb: rS[0], total: fuentes.length, totalS: fuentesS.length, siguientes: rN.slice(5,10) };
+  return { n: rN.slice(0,5).sort((a,b) => a.v - b.v), sb: rS[0], total: fuentes.length, totalS: fuentesS.length, siguientes: rN.slice(5,10), fuentes, fuentesS };
 }
 
 const bolas = (ns, sb, cls="") => `<span class="bolas ${cls}">${ns.map(v => `<span class="bola">${dos(v)}</span>`).join("")}${sb != null ? `<span class="bola sb">${dos(sb)}</span>` : ""}</span>`;
@@ -1193,6 +1200,7 @@ function renderBPron(A){
         <li><b class="mono">SB ${dos(C.sb.v)}</b> <span class="muted">— ${C.sb.votos.length} de ${C.totalS} métodos: ${C.sb.votos.join(", ") || "desempate por puntaje"}</span></li></ul>
       <p class="note detalle" style="margin-top:6px">Siguientes en votos: ${C.siguientes.map(x => `${dos(x.v)} (${x.votos.length})`).join(" · ")}</p>
     </div>
+    <div id="b-mejor-metodo">${bloqueMejorBal(A)}</div>
     <div class="prob">
       <span class="eyebrow">Probabilidad real del premio mayor</span>
       <span class="big">1 en ${fmtN(comb(43,5)*16)}</span>
@@ -1423,9 +1431,37 @@ document.querySelectorAll("#vista-baloto .seg button").forEach(b => b.addEventLi
 }));
 
 /* ---------- Registro de aciertos ---------- */
-// Para cada uno de los últimos sorteos, recalcula lo que la página habría dicho usando solo los sorteos anteriores
+// Para cada uno de los últimos sorteos, recalcula lo que habría dicho cada método usando solo los sorteos anteriores
 const REG = { cache:{}, trabajando:null };
+const N_REG_LOT = 20, N_REG_BAL = 15;
 const marcar = (pred, real) => [...pred].map((c,i) => c === real[i] ? `<b class="ok">${c}</b>` : `<span class="no">${c}</span>`).join("");
+
+const MET_L = [
+  ["consenso", "Más votada", A => A.consenso.num],
+  ["combinado", "Modelo combinado", A => A.top5[0].num],
+  ["caliente", "Más frecuente", A => A.metodos.caliente],
+  ["reciente", "Racha reciente", A => A.metodos.reciente],
+  ["atrasado", "Más atrasado", A => A.metodos.atrasado],
+  ["seq", "Secuencia de dígitos", A => A.seq ? A.seq.pred : null],
+  ["pat", "Patrón entre sorteos", A => A.pat ? A.pat.best.pred : null],
+];
+const MET_B = [
+  ["consenso", "Más votada"], ["combinado", "Modelo combinado"], ["frec", "Más frecuentes"], ["racha", "Racha reciente"],
+  ["atras", "Más atrasadas"], ["sigue", "Siguen al último sorteo"],
+];
+// Jugada (5 balotas + SB) de cada método a partir del análisis y la votación
+function jugadasMetodosBaloto(A, C){
+  const f = nom => (C.fuentes.find(x => x[0] === nom) || [,[]])[1].slice(0,5).sort((a,b) => a-b);
+  const s = nom => ((C.fuentesS.find(x => x[0] === nom) || [,[]])[1][0]) ?? C.sb.v;
+  return {
+    consenso: { n: C.n.map(x => x.v), sb: C.sb.v },
+    combinado: { n: f("Modelo combinado"), sb: rankBal(scoreBal(A.stS, A.wS))[0] },
+    frec: { n: f("Más frecuentes"), sb: s("Más frecuente") },
+    racha: { n: f("Racha reciente"), sb: s("Racha reciente") },
+    atras: { n: f("Más atrasadas"), sb: s("Más atrasada") },
+    sigue: { n: f("Siguen al último sorteo"), sb: s("Siguen a la última") },
+  };
+}
 function nivelLoteria(nums, real){
   const exacto = nums.some(x => x === real), t3 = nums.some(x => x.slice(-3) === real.slice(-3)),
         t2 = nums.some(x => x.slice(-2) === real.slice(-2)), t1 = nums.some(x => x.slice(-1) === real.slice(-1));
@@ -1437,6 +1473,7 @@ function nivelLoteria(nums, real){
   if (cifras) return { txt:`${cifras} cifra${cifras > 1 ? "s" : ""} en su lugar`, cls:"medio", nivel:1 };
   return { txt:"No le atinamos", cls:"miss", nivel:0 };
 }
+const puntosL = (x, real) => posHits(x, real) + (x.slice(-2) === real.slice(-2) ? 0.5 : 0);
 function nivelBaloto(jugs, real){
   let mejor = { k:-1, sb:false };
   jugs.forEach(j => { const k = inter(j.n, real.n), sb = j.sb === real.sb;
@@ -1458,60 +1495,110 @@ function calcularRegistro(clave, ord, K, paso, listo){
   };
   setTimeout(uno, 0);
 }
-function resumenTabla(filas, cuenta){
-  return `<div class="reg-resumen">${cuenta.map(([t, v, esp]) => `<div><b>${v}</b><span>${t}</span>${esp != null ? `<small>azar: ${fmtPct(esp)}</small>` : ""}</div>`).join("")}</div>`;
-}
+const resumenTabla = cuenta => `<div class="reg-resumen">${cuenta.map(([t, v, esp]) => `<div><b>${v}</b><span>${t}</span>${esp != null ? `<small>azar: ${fmtPct(esp)}</small>` : ""}</div>`).join("")}</div>`;
 
+/* --- Loterías --- */
+const claveLot = () => S.ordAll.length ? S.lot + ":" + S.ordAll.length + ":" + S.ordAll[S.ordAll.length-1].fecha : null;
+function rankingLot(filas){
+  return MET_L.map(([k, nom]) => {
+    const fs = filas.filter(f => f.m[k]);
+    const c = fs.reduce((s,f) => s + posHits(f.m[k], f.real), 0), d2 = fs.filter(f => f.m[k].slice(-2) === f.real.slice(-2)).length,
+          d1 = fs.filter(f => f.m[k].slice(-1) === f.real.slice(-1)).length;
+    return { k, nom, n: fs.length, prom: fs.length ? c / fs.length : 0, d2, d1 };
+  }).filter(r => r.n).sort((a,b) => b.prom - a.prom || b.d2 - a.d2 || b.d1 - a.d1);
+}
+function bloqueMejorLot(A){
+  const filas = REG.cache[claveLot()];
+  if (!filas) return `<div class="mejor"><span class="thinking">Revisando cuál método se ha acercado más en los últimos ${N_REG_LOT} sorteos…</span></div>`;
+  const R = rankingLot(filas), M = R[0], actual = Object.fromEntries(MET_L.map(([k,,fn]) => [k, fn(A)]));
+  return `<div class="mejor">
+    <div class="eyebrow">El método que más se ha acercado (últimos ${filas.length} sorteos)</div>
+    <div class="mejor-top"><span class="mejor-nom">${M.nom}</span><span class="balls mini">${[...actual[M.k]].map(d => `<span class="ball">${d}</span>`).join("")}</span></div>
+    <p class="note">Acertó en promedio <b>${fmtPct(M.prom)}</b> cifras en su lugar por sorteo (el azar da 0,4), ${M.d2} ${M.d2 === 1 ? "vez" : "veces"} las 2 últimas cifras y ${M.d1} la última. Su número para el próximo sorteo es <b class="mono">${actual[M.k]}</b>.</p>
+    <div class="scroll"><table class="rank"><thead><tr><th>Método</th><th class="num">Cifras por sorteo</th><th class="num">2 últimas</th><th class="num">Última</th><th>Próximo</th></tr></thead><tbody>
+      ${R.map((r,i) => `<tr${i === 0 ? ' class="lider"' : ""}><td>${r.nom}</td><td class="num mono">${fmtPct(r.prom)}</td><td class="num mono">${r.d2}</td><td class="num mono">${r.d1}</td><td class="mono"><b>${actual[r.k] || "—"}</b></td></tr>`).join("")}
+      <tr><td class="muted">Azar (referencia)</td><td class="num mono muted">0,4</td><td class="num mono muted">${fmtPct(filas.length/100)}</td><td class="num mono muted">${fmtPct(filas.length/10)}</td><td></td></tr>
+    </tbody></table></div>
+    <p class="note detalle">Que un método haya ido mejor en pocas semanas no garantiza que siga así: con ${filas.length} sorteos, diferencias de unas décimas son normales por suerte.</p>
+  </div>`;
+}
 function renderRegistro(){
   const el = $("#registro"); if (!el || !S.ordAll.length) return;
-  const L = LOT(), ord = S.ordAll, clave = S.lot + ":" + ord.length + ":" + ord[ord.length-1].fecha;
-  if (!REG.cache[clave]) el.innerHTML = `<div class="empty">Calculando qué habría dicho la página antes de cada uno de los últimos sorteos…</div>`;
-  calcularRegistro(clave, ord, 12, (previos, real) => {
-    const A = analizar(previos, L.dia, 0), nums = [A.consenso.num, ...A.top5.map(t => t.num)];
-    return { fecha: real.fecha, real: real.numero, consenso: A.consenso.num, top5: A.top5.map(t => t.num), r: nivelLoteria(nums, real.numero),
-      esp2: new Set(nums.map(x => x.slice(-2))).size / 100, esp1: new Set(nums.map(x => x.slice(-1))).size / 10 };
+  const L = LOT(), ord = S.ordAll, clave = claveLot();
+  if (!REG.cache[clave]) el.innerHTML = `<div class="empty">Calculando qué habría dicho cada método antes de cada uno de los últimos ${N_REG_LOT} sorteos…</div>`;
+  calcularRegistro(clave, ord, N_REG_LOT, (previos, real) => {
+    const A = analizar(previos, L.dia, 0), m = Object.fromEntries(MET_L.map(([k,,fn]) => [k, fn(A)]));
+    const top5 = A.top5.map(t => t.num);
+    const mejor = MET_L.filter(([k]) => m[k]).map(([k, nom]) => ({ nom, x: m[k], p: puntosL(m[k], real.numero) })).sort((a,b) => b.p - a.p)[0];
+    return { fecha: real.fecha, real: real.numero, m, top5, mejor, r: nivelLoteria([...Object.values(m).filter(Boolean), ...top5], real.numero),
+      esp2: new Set([...Object.values(m).filter(Boolean), ...top5].map(x => x.slice(-2))).size / 100 };
   }, filas => {
-    if (S.lot === "baloto" || clave !== S.lot + ":" + S.ordAll.length + ":" + S.ordAll[S.ordAll.length-1].fecha) return;
+    if (S.lot === "baloto" || clave !== claveLot()) return;
     const n = filas.length, sum = f => filas.reduce((s,x) => s + f(x), 0);
-    el.innerHTML = resumenTabla(filas, [
+    const mm = $("#mejor-metodo"); if (mm && S.A) mm.innerHTML = bloqueMejorLot(S.A);
+    el.innerHTML = resumenTabla([
       ["sorteos revisados", n],
-      ["con las 2 últimas cifras o más", sum(x => x.r.nivel >= 3 ? 1 : 0), sum(x => x.esp2)],
-      ["con la última cifra o más", sum(x => x.r.nivel >= 2 && x.r.nivel !== 1 ? 1 : 0), sum(x => x.esp1)],
-      ["número exacto", sum(x => x.r.nivel === 5 ? 1 : 0), n * 6 / 10000],
-    ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Más votada</th><th class="detalle-cel">5 números</th><th>¿Le atinamos?</th></tr></thead><tbody>
+      ["algún método con las 2 últimas cifras o más", sum(x => x.r.nivel >= 3 ? 1 : 0), sum(x => x.esp2)],
+      ["número exacto", sum(x => x.r.nivel === 5 ? 1 : 0)],
+    ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Se acercó más</th><th class="detalle-cel">Más votada</th><th>¿Le atinamos?</th></tr></thead><tbody>
       ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short"})}</td><td class="mono"><b>${x.real}</b></td>
-        <td class="mono">${marcar(x.consenso, x.real)}</td>
-        <td class="mono detalle-cel">${x.top5.map(t => marcar(t, x.real)).join(" ")}</td>
+        <td><span class="mono">${marcar(x.mejor.x, x.real)}</span> <small class="muted">${x.mejor.nom}</small></td>
+        <td class="mono detalle-cel">${marcar(x.m.consenso, x.real)}</td>
         <td><span class="pill ${x.r.cls}">${x.r.txt}</span></td></tr>`).join("")}
     </tbody></table></div>
-    <p class="note">Se cuenta el mejor resultado entre la más votada y los 5 números. En verde, las cifras que coincidieron en su lugar. “Azar” es lo que se esperaría con números escogidos al azar.</p>`;
+    <p class="note">“Se acercó más” es el método que ese día tuvo más cifras en su lugar. “¿Le atinamos?” es lo mejor que logró cualquiera de los métodos o de los 5 números. En verde, las cifras que coincidieron.</p>`;
   });
 }
 
+/* --- Baloto --- */
+const claveBal = () => { const d = BAL.data[BAL.juego]; if (!d || !d.length) return null; const u = d.reduce((m,x) => x.fecha > m ? x.fecha : m, ""); return BAL.juego + ":" + d.length + ":" + u; };
+function rankingBal(filas){
+  return MET_B.map(([k, nom]) => {
+    const fs = filas.filter(f => f.m[k] && f.m[k].n.length === 5);
+    const kk = fs.reduce((s,f) => s + inter(f.m[k].n, f.real.n), 0), sb = fs.filter(f => f.m[k].sb === f.real.sb).length,
+          tres = fs.filter(f => inter(f.m[k].n, f.real.n) >= 2).length;
+    return { k, nom, n: fs.length, prom: fs.length ? kk / fs.length : 0, sb, tres };
+  }).filter(r => r.n).sort((a,b) => b.prom - a.prom || b.sb - a.sb);
+}
+function bloqueMejorBal(A){
+  const filas = REG.cache[claveBal()];
+  if (!filas) return `<div class="mejor"><span class="thinking">Revisando cuál método se ha acercado más en los últimos ${N_REG_BAL} sorteos…</span></div>`;
+  const R = rankingBal(filas), M = R[0], actual = jugadasMetodosBaloto(A, A.consenso);
+  return `<div class="mejor">
+    <div class="eyebrow">El método que más se ha acercado (últimos ${filas.length} sorteos)</div>
+    <div class="mejor-top"><span class="mejor-nom">${M.nom}</span>${bolas(actual[M.k].n, actual[M.k].sb)}</div>
+    <p class="note">Acertó en promedio <b>${fmtPct(M.prom)}</b> números por sorteo (el azar da ${fmtPct(25/43)}), ${M.tres} ${M.tres === 1 ? "vez" : "veces"} 2 números o más y ${M.sb} la superbalota.</p>
+    <div class="scroll"><table class="rank"><thead><tr><th>Método</th><th class="num">Números por sorteo</th><th class="num">2 o más</th><th class="num">SB</th><th>Próxima jugada</th></tr></thead><tbody>
+      ${R.map((r,i) => `<tr${i === 0 ? ' class="lider"' : ""}><td>${r.nom}</td><td class="num mono">${fmtPct(r.prom)}</td><td class="num mono">${r.tres}</td><td class="num mono">${r.sb}</td><td class="mono">${actual[r.k].n.map(dos).join(" ")} · ${dos(actual[r.k].sb)}</td></tr>`).join("")}
+      <tr><td class="muted">Azar (referencia)</td><td class="num mono muted">${fmtPct(25/43)}</td><td class="num mono muted">${fmtPct(filas.length*(1-(comb(38,5)+5*comb(38,4))/comb(43,5)))}</td><td class="num mono muted">${fmtPct(filas.length/16)}</td><td></td></tr>
+    </tbody></table></div>
+    <p class="note detalle">Que un método haya ido mejor en pocas semanas no garantiza que siga así: con ${filas.length} sorteos, diferencias pequeñas son normales por suerte.</p>
+  </div>`;
+}
 function renderBRegistro(){
   const el = $("#b-registro"), draws = BAL.data[BAL.juego]; if (!el || !draws) return;
-  const ord = [...draws].sort((x,y) => x.fecha < y.fecha ? -1 : 1), clave = BAL.juego + ":" + ord.length + ":" + ord[ord.length-1].fecha;
-  if (!REG.cache[clave]) el.innerHTML = `<div class="empty">Calculando qué habría dicho la página antes de cada uno de los últimos sorteos…</div>`;
-  calcularRegistro(clave, ord, 12, (previos, real) => {
-    const A = analizarBaloto(previos, 0), C = consensoBaloto(A, real.fecha);
-    const cons = { n: C.n.map(x => x.v), sb: C.sb.v };
-    return { fecha: real.fecha, real, cons, r: nivelBaloto([cons, ...A.jugadas], real) };
+  const ord = [...draws].sort((x,y) => x.fecha < y.fecha ? -1 : 1), clave = claveBal();
+  if (!REG.cache[clave]) el.innerHTML = `<div class="empty">Calculando qué habría dicho cada método antes de cada uno de los últimos ${N_REG_BAL} sorteos…</div>`;
+  calcularRegistro(clave, ord, N_REG_BAL, (previos, real) => {
+    const A = analizarBaloto(previos, 0), C = consensoBaloto(A, real.fecha), m = jugadasMetodosBaloto(A, C);
+    const mejor = MET_B.map(([k, nom]) => ({ nom, j: m[k], p: inter(m[k].n, real.n) + (m[k].sb === real.sb ? 0.5 : 0) })).sort((a,b) => b.p - a.p)[0];
+    return { fecha: real.fecha, real, m, mejor, r: nivelBaloto([...Object.values(m), ...A.jugadas], real) };
   }, filas => {
-    if (S.lot !== "baloto" || clave !== BAL.juego + ":" + (BAL.data[BAL.juego]||[]).length + ":" + ord[ord.length-1].fecha) return;
+    if (S.lot !== "baloto" || clave !== claveBal()) return;
     const n = filas.length, sum = f => filas.reduce((s,x) => s + f(x), 0);
-    const pk = k => comb(5,k)*comb(38,5-k)/comb(43,5), p3 = pk(3) + pk(4) + pk(5);
-    const bolasMarcadas = (ns, sb, real) => `<span class="bolas chicas">${ns.map(v => `<span class="bola${real.n.includes(v) ? " acierto" : ""}">${dos(v)}</span>`).join("")}<span class="bola sb${sb === real.sb ? " acierto" : ""}">${dos(sb)}</span></span>`;
-    el.innerHTML = resumenTabla(filas, [
+    const mm = $("#b-mejor-metodo"); if (mm && BAL.A?.consenso) mm.innerHTML = bloqueMejorBal(BAL.A);
+    const marcadas = (j, real) => `<span class="bolas chicas">${j.n.map(v => `<span class="bola${real.n.includes(v) ? " acierto" : ""}">${dos(v)}</span>`).join("")}<span class="bola sb${j.sb === real.sb ? " acierto" : ""}">${dos(j.sb)}</span></span>`;
+    el.innerHTML = resumenTabla([
       ["sorteos revisados", n],
-      ["con 3 números o más", sum(x => x.r.k >= 3 ? 1 : 0), n * (1 - Math.pow(1 - p3, 6))],
-      ["con la superbalota", sum(x => x.r.sb ? 1 : 0), n * (1 - Math.pow(15/16, 6))],
-    ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Más votada</th><th>¿Le atinamos?</th></tr></thead><tbody>
+      ["alguna jugada con 3 números o más", sum(x => x.r.k >= 3 ? 1 : 0)],
+      ["alguna jugada con la superbalota", sum(x => x.r.sb ? 1 : 0)],
+    ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Se acercó más</th><th>¿Le atinamos?</th></tr></thead><tbody>
       ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short"})}</td>
         <td>${bolas(x.real.n, x.real.sb, "chicas")}</td>
-        <td>${bolasMarcadas(x.cons.n, x.cons.sb, x.real)}</td>
+        <td>${marcadas(x.mejor.j, x.real)}<br><small class="muted">${x.mejor.nom}</small></td>
         <td><span class="pill ${x.r.cls}">${x.r.txt}</span></td></tr>`).join("")}
     </tbody></table></div>
-    <p class="note">Se cuenta la mejor jugada entre la más votada y las 5 jugadas. Las balotas acertadas aparecen en verde. “Azar” es lo que se esperaría con 6 jugadas al azar.</p>`;
+    <p class="note">“Se acercó más” es el método que ese día acertó más balotas. “¿Le atinamos?” es lo mejor que logró cualquier método o cualquiera de las 5 jugadas. Las balotas acertadas aparecen en verde.</p>`;
   });
 }
 
