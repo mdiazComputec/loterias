@@ -130,7 +130,10 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .thinking{color:var(--muted);font-style:italic}
 .stack{display:grid;gap:28px}
 .solo-movil{display:none}
-.reg b.ok{color:var(--good);font-weight:800}
+.reg b.ok,.calc b.ok{color:var(--good);font-weight:800}
+.calc{display:block;font-size:.72rem;color:var(--muted);font-weight:400;letter-spacing:0}
+.calc .no{color:var(--muted)}
+.bstack{display:grid;gap:4px;justify-items:end}
 .mejor{border:2px solid var(--accent);border-radius:6px;padding:14px;display:grid;gap:10px;background:var(--surface)}
 .mejor-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
 .mejor-nom{font-family:var(--f-display);font-size:1.5rem;text-transform:uppercase;color:var(--accent);line-height:1}
@@ -542,11 +545,13 @@ function analizar(sorteos, dia = 4, ventana = 0){
   const pruebas = n - start;
   // Pesos elegidos sorteo a sorteo solo con lo que ya había pasado (sin mirar el futuro)
   const cum = GRID.map(() => 0);
+  res.predHist = {};
   let wfHits = 0, wfBest = 0, azarBest = 0;
   let semilla = 12345; const rnd = () => (semilla = (semilla * 1103515245 + 12345) % 2147483648) / 2147483648;
   for (let t = start; t < n; t++){
     let bi = 0; GRID.forEach((w,i) => { if (cum[i] > cum[bi]) bi = i; });
     const scT = digitScores(sts[t], GRID[bi]);
+    res.predHist[ord[t].fecha] = { p: argmaxNum(scT), t5: top5Div(scT) };
     wfHits += posHits(argmaxNum(scT), H[t]);
     wfBest += Math.max(...top5Div(scT).map(x => posHits(x, H[t])));
     azarBest += Math.max(...[0,1,2,3,4].map(() => posHits(String(Math.floor(rnd()*10000)).padStart(4,"0"), H[t])));
@@ -850,7 +855,7 @@ function renderRecent(A){
   const rows = [...S.ordAll].reverse().slice(0,12);
   if (!rows.length){ el.innerHTML = `<li class="muted" style="display:block">Aún no hay sorteos. Agrega el primero con el formulario.</li>`; return; }
   el.innerHTML = rows.map(s => `<li><span>${fmtFecha(s.fecha,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span>
-    <span class="n">${esc(s.numero)}</span><span class="mono muted">${esc(s.serie)}</span>
+    <span class="n">${esc(s.numero)}${(() => { const HA = (S.A && !S.A.ventana) ? S.A : (S.Aalt || S.A), q = HA && HA.predHist && HA.predHist[s.fecha]; return q ? `<small class="calc">calculamos <span class="mono">${marcar(q.p, s.numero)}</span></small>` : ""; })()}</span><span class="mono muted">${esc(s.serie)}</span>
     <button class="del" data-f="${s.fecha}" aria-label="Borrar sorteo del ${s.fecha}" ${S.canWrite ? "" : "hidden"}>×</button></li>`).join("");
   el.querySelectorAll(".del").forEach(b => b.onclick = () => {
     if (!b.classList.contains("confirm")){ b.classList.add("confirm"); b.textContent = "¿Borrar?"; setTimeout(() => { b.classList.remove("confirm"); b.textContent = "×"; }, 3000); return; }
@@ -919,8 +924,25 @@ function renderHeat(A){
 function renderHist(A){
   const el = $("#hist");
   if (!A.n){ el.innerHTML = `<div class="empty">Aún no hay sorteos guardados.</div>`; return; }
-  el.innerHTML = `<table><thead><tr><th>Fecha</th><th>Número</th><th>Serie</th></tr></thead><tbody>${[...S.ordAll].reverse().map(s =>
-    `<tr><td>${fmtFecha(s.fecha)}</td><td class="mono"><b>${esc(s.numero)}</b></td><td class="mono muted">${esc(s.serie)}</td></tr>`).join("")}</tbody></table>`;
+  const HA = (S.A && !S.A.ventana) ? S.A : (S.Aalt || S.A), P = HA.predHist || {};
+  const filas = [...S.ordAll].reverse(), con = filas.filter(s => P[s.fecha]);
+  const cif = con.filter(s => posHits(P[s.fecha].p, s.numero) > 0).length;
+  const dos5 = con.filter(s => [P[s.fecha].p, ...P[s.fecha].t5].some(x => x.slice(-2) === s.numero.slice(-2))).length;
+  const exac = con.filter(s => [P[s.fecha].p, ...P[s.fecha].t5].includes(s.numero)).length;
+  const esp2 = con.reduce((t,s) => t + new Set([P[s.fecha].p, ...P[s.fecha].t5].map(x => x.slice(-2))).size/100, 0);
+  el.innerHTML = (con.length ? resumenTabla([
+      ["sorteos con número calculado", con.length],
+      ["el calculado tuvo al menos 1 cifra en su lugar", `${Math.round(cif/con.length*100)}%`, `${Math.round((1-Math.pow(0.9,4))*100)}%`],
+      ["alguno de los 6 con las 2 últimas cifras", dos5, esp2],
+      ["número exacto", exac, con.length*6/10000],
+    ]) + `<p class="note">“Calculamos” es el número del modelo combinado para ese sorteo, hecho solo con los sorteos anteriores. En verde, las cifras que coincidieron en su lugar.</p>` : "")
+  + `<table class="reg"><thead><tr><th>Fecha</th><th>Cayó</th><th>Serie</th><th>Calculamos</th><th class="detalle-cel">Mejor de los 5</th><th>Resultado</th></tr></thead><tbody>${filas.map(s => {
+    const q = P[s.fecha];
+    if (!q) return `<tr><td>${fmtFecha(s.fecha,{day:"numeric",month:"short",year:"numeric"})}</td><td class="mono"><b>${esc(s.numero)}</b></td><td class="mono muted">${esc(s.serie)}</td><td class="muted">—</td><td class="detalle-cel muted">—</td><td class="muted" style="font-size:.8rem">Sin datos previos</td></tr>`;
+    const mejor = q.t5.slice().sort((a,b) => puntosL(b, s.numero) - puntosL(a, s.numero))[0], r = nivelLoteria([q.p, ...q.t5], s.numero);
+    return `<tr><td>${fmtFecha(s.fecha,{day:"numeric",month:"short",year:"numeric"})}</td><td class="mono"><b>${esc(s.numero)}</b></td><td class="mono muted">${esc(s.serie)}</td>
+      <td class="mono">${marcar(q.p, s.numero)}</td><td class="mono detalle-cel">${marcar(mejor, s.numero)}</td><td><span class="pill ${r.cls}">${r.txt}</span></td></tr>`;
+  }).join("")}</tbody></table>`;
 }
 
 /* ---------- Acciones ---------- */
@@ -1097,6 +1119,7 @@ function analizarBaloto(draws, ventana){
   const n = ord.length, res = { n, ord, proxima: proximoBaloto(ord.length ? ord[n-1].fecha : null) };
   if (n < 40) return res;
   const NS = ord.map(d => d.n), SB = ord.map(d => [d.sb]);
+  res.predHist = {};
   const start = 30, cumN = GRID.map(() => 0), cumS = GRID.map(() => 0);
   let hitsN = 0, hitsS = 0, mejor5 = 0, azar5 = 0, tres5 = 0, tresAz = 0;
   let semilla = 777; const rnd = () => (semilla = (semilla * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -1108,6 +1131,7 @@ function analizarBaloto(draws, ventana){
     hitsN += inter(rk.slice(0,5), real);
     hitsS += rankBal(scoreBal(stS, GRID[bs]))[0] === SB[t][0] ? 1 : 0;
     const jug = [0,1,2,3,4].map(j => [0,1,2,3,4].map(k => rk[j + 5*k]));
+    res.predHist[ord[t].fecha] = { n: rk.slice(0,5).sort((a,b) => a-b), sb: rankBal(scoreBal(stS, GRID[bs]))[0] };
     const mj = Math.max(...jug.map(x => inter(x, real))); mejor5 += mj; tres5 += mj >= 3 ? 1 : 0;
     const ma = Math.max(...[0,1,2,3,4].map(() => inter(azarJugada(), real))); azar5 += ma; tresAz += ma >= 3 ? 1 : 0;
     GRID.forEach((w,i) => {
@@ -1276,7 +1300,9 @@ Responde solo con JSON con esta forma exacta:
 
 function renderBRecent(){
   const ord = [...(BAL.data[BAL.juego]||[])].sort((x,y) => x.fecha < y.fecha ? 1 : -1).slice(0,12);
-  $("#b-recent").innerHTML = ord.length ? ord.map(d => `<li style="grid-template-columns:1fr auto"><span>${fmtFecha(d.fecha,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span>${bolas(d.n, d.sb, "chicas")}</li>`).join("")
+  const P = (BAL.A && BAL.A.predHist) || {};
+  const vs = (j, real) => `<span class="bolas chicas">${j.n.map(v => `<span class="bola${real.n.includes(v) ? " acierto" : ""}">${dos(v)}</span>`).join("")}<span class="bola sb${j.sb === real.sb ? " acierto" : ""}">${dos(j.sb)}</span></span>`;
+  $("#b-recent").innerHTML = ord.length ? ord.map(d => `<li style="grid-template-columns:1fr auto"><span>${fmtFecha(d.fecha,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}${P[d.fecha] ? `<br><small class="muted">calculamos</small>` : ""}</span><span class="bstack">${bolas(d.n, d.sb, "chicas")}${P[d.fecha] ? vs(P[d.fecha], d) : ""}</span></li>`).join("")
     : `<li class="muted" style="display:block">Aún no hay sorteos. Agrega el primero con el formulario.</li>`;
 }
 
@@ -1495,7 +1521,7 @@ function calcularRegistro(clave, ord, K, paso, listo){
   };
   setTimeout(uno, 0);
 }
-const resumenTabla = cuenta => `<div class="reg-resumen">${cuenta.map(([t, v, esp]) => `<div><b>${v}</b><span>${t}</span>${esp != null ? `<small>azar: ${fmtPct(esp)}</small>` : ""}</div>`).join("")}</div>`;
+const resumenTabla = cuenta => `<div class="reg-resumen">${cuenta.map(([t, v, esp]) => `<div><b>${v}</b><span>${t}</span>${esp != null ? `<small>azar: ${typeof esp === "string" ? esp : fmtPct(esp)}</small>` : ""}</div>`).join("")}</div>`;
 
 /* --- Loterías --- */
 const claveLot = () => S.ordAll.length ? S.lot + ":" + S.ordAll.length + ":" + S.ordAll[S.ordAll.length-1].fecha : null;
