@@ -130,6 +130,18 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .thinking{color:var(--muted);font-style:italic}
 .stack{display:grid;gap:28px}
 .solo-movil{display:none}
+.reg b.ok{color:var(--good);font-weight:800}
+.reg .no{color:var(--muted)}
+.reg td{vertical-align:middle}
+.pill.top{background:var(--gold);color:#1a1405}
+.pill.medio{background:var(--gold-soft);color:var(--ink);border:1px solid var(--gold)}
+.bola.acierto{background:var(--good);border-color:var(--good);color:#fff}
+.reg-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:10px}
+.reg-resumen div{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:grid;gap:2px}
+.reg-resumen b{font-family:var(--f-display);font-size:1.8rem;line-height:1}
+.reg-resumen span{font-size:.82rem}
+.reg-resumen small{font-size:.75rem;color:var(--muted)}
+@media (max-width:700px){.detalle-cel{display:none}.reg td,.reg th{padding:6px}}
 .aviso{display:grid;gap:10px;padding:20px;border:2px solid var(--gold);border-radius:6px;background:var(--gold-soft);color:var(--ink)}
 .aviso b{font-size:1.1rem}
 .aviso button{justify-self:start}
@@ -257,6 +269,15 @@ select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:
     </aside>
   </div>
 
+  <section class="panel" aria-labelledby="t-reg">
+    <div>
+      <div class="eyebrow">Registro</div>
+      <h2 id="t-reg">¿Le atinamos?</h2>
+      <p class="note detalle">Para cada uno de los últimos 12 sorteos, la página recalcula lo que habría pronosticado usando solo los sorteos anteriores, y lo compara con lo que cayó.</p>
+    </div>
+    <div id="registro"><div class="empty">Cargando el registro…</div></div>
+  </section>
+
   <section class="panel detalle" aria-labelledby="t-pat">
     <div>
       <div class="eyebrow">Segundo acercamiento · Patrones</div>
@@ -365,6 +386,15 @@ select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:
         </div>
       </aside>
     </div>
+
+    <section class="panel" aria-labelledby="t-breg">
+    <div>
+      <div class="eyebrow">Registro</div>
+      <h2 id="t-breg">¿Le atinamos?</h2>
+      <p class="note detalle">Para cada uno de los últimos 12 sorteos, la página recalcula lo que habría pronosticado usando solo los sorteos anteriores, y lo compara con lo que cayó.</p>
+    </div>
+    <div id="b-registro"><div class="empty">Cargando el registro…</div></div>
+  </section>
 
     <section class="panel detalle" aria-labelledby="t-bodds">
       <div>
@@ -632,7 +662,7 @@ function render(){
   $("#proxima").textContent = fmtFecha(A.proxima);
   $("#basado").textContent = A.ventana ? `Últimos ${A.n} de ${S.ordAll.length} sorteos` : `${A.n} sorteos`;
   if (!$("#f-fecha").value) $("#f-fecha").value = A.proxima;
-  renderPronostico(A); renderRecent(A); renderPatrones(A); renderSecuencias(A); renderSesgo(A); renderAciertos(A); renderBacktest(A); renderHeat(A); renderHist(A);
+  renderPronostico(A); renderRegistro(); renderRecent(A); renderPatrones(A); renderSecuencias(A); renderSesgo(A); renderAciertos(A); renderBacktest(A); renderHeat(A); renderHist(A);
 }
 
 function renderPronostico(A){
@@ -1096,7 +1126,7 @@ function analizarBaloto(draws, ventana){
   return res;
 }
 
-function consensoBaloto(A){
+function consensoBaloto(A, fecha = A.proxima){
   const ord = A.ord, N = ord.length, last = ord[N-1], sc = scoreBal(A.stN, A.wN), scS = scoreBal(A.stS, A.wS);
   const top = (st, w, k) => rankBal(scoreBal(st, w)).slice(0, k);
   // Balotas que más salieron en el sorteo siguiente a sorteos que compartían números con el último
@@ -1108,7 +1138,7 @@ function consensoBaloto(A){
   }
   const B43 = Array.from({length:43}, (_,i) => i+1), B16 = Array.from({length:16}, (_,i) => i+1);
   const repetidas = N >= 3 ? B43.filter(v => [1,2,3].filter(j => ord[N-j].n.includes(v)).length >= 2) : [];
-  const d = fechaD(A.proxima), deFecha = [...new Set(FORMULAS.slice(0,7).map(([,fn]) => fn(d)))];
+  const d = fechaD(fecha), deFecha = [...new Set(FORMULAS.slice(0,7).map(([,fn]) => fn(d)))];
   const fuentes = [
     ["Más frecuentes", top(A.stN,[1,0,0],10)], ["Racha reciente", top(A.stN,[0,1,0],10)], ["Más atrasadas", top(A.stN,[0,0,1],10)],
     ["Modelo combinado", rankBal(sc).slice(0,10)], ["Siguen al último sorteo", B43.slice().sort((a,b) => T[b]-T[a] || sc[b]-sc[a]).slice(0,10)],
@@ -1146,7 +1176,7 @@ function renderBaloto(){
     $("#bf-fecha").value = d.toISOString().slice(0,10);
   }
   $("#bf-juego").value = BAL.juego;
-  renderBPron(A); renderBRecent(); renderOdds(); renderBFechas(A); renderBFreq(A); renderBSeg(); renderBBt(A);
+  renderBPron(A); renderBRegistro(); renderBRecent(); renderOdds(); renderBFechas(A); renderBFreq(A); renderBSeg(); renderBBt(A);
 }
 
 function renderBPron(A){
@@ -1391,6 +1421,99 @@ document.querySelectorAll("#vista-baloto .seg button").forEach(b => b.addEventLi
   if (b.dataset.j === BAL.juego) return;
   BAL.juego = b.dataset.j; $("#bf-fecha").value = ""; renderBaloto();
 }));
+
+/* ---------- Registro de aciertos ---------- */
+// Para cada uno de los últimos sorteos, recalcula lo que la página habría dicho usando solo los sorteos anteriores
+const REG = { cache:{}, trabajando:null };
+const marcar = (pred, real) => [...pred].map((c,i) => c === real[i] ? `<b class="ok">${c}</b>` : `<span class="no">${c}</span>`).join("");
+function nivelLoteria(nums, real){
+  const exacto = nums.some(x => x === real), t3 = nums.some(x => x.slice(-3) === real.slice(-3)),
+        t2 = nums.some(x => x.slice(-2) === real.slice(-2)), t1 = nums.some(x => x.slice(-1) === real.slice(-1));
+  const cifras = Math.max(...nums.map(x => posHits(x, real)));
+  if (exacto) return { txt:"¡Exacto!", cls:"top", nivel:5 };
+  if (t3) return { txt:"3 últimas cifras", cls:"hit", nivel:4 };
+  if (t2) return { txt:"2 últimas cifras", cls:"hit", nivel:3 };
+  if (t1) return { txt:`Última cifra${cifras > 1 ? ` · ${cifras} cifras` : ""}`, cls:"medio", nivel:2 };
+  if (cifras) return { txt:`${cifras} cifra${cifras > 1 ? "s" : ""} en su lugar`, cls:"medio", nivel:1 };
+  return { txt:"No le atinamos", cls:"miss", nivel:0 };
+}
+function nivelBaloto(jugs, real){
+  let mejor = { k:-1, sb:false };
+  jugs.forEach(j => { const k = inter(j.n, real.n), sb = j.sb === real.sb;
+    if (k + (sb ? 0.5 : 0) > mejor.k + (mejor.sb ? 0.5 : 0)) mejor = { k, sb }; });
+  const txt = mejor.k === 0 && !mejor.sb ? "No le atinamos" : `${mejor.k} número${mejor.k === 1 ? "" : "s"}${mejor.sb ? " + superbalota" : ""}`;
+  return { ...mejor, txt, cls: mejor.k >= 3 || (mejor.k >= 2 && mejor.sb) ? "hit" : (mejor.k >= 1 || mejor.sb) ? "medio" : "miss" };
+}
+function calcularRegistro(clave, ord, K, paso, listo){
+  if (REG.cache[clave]) return listo(REG.cache[clave]);
+  if (REG.trabajando === clave) return;
+  REG.trabajando = clave;
+  const filas = [], desde = Math.max(30, ord.length - K);
+  let i = ord.length - 1;
+  const uno = () => {
+    if (REG.trabajando !== clave) return;
+    if (i < desde){ REG.cache[clave] = filas; REG.trabajando = null; return listo(filas); }
+    filas.push(paso(ord.slice(0, i), ord[i])); i--;
+    setTimeout(uno, 0);
+  };
+  setTimeout(uno, 0);
+}
+function resumenTabla(filas, cuenta){
+  return `<div class="reg-resumen">${cuenta.map(([t, v, esp]) => `<div><b>${v}</b><span>${t}</span>${esp != null ? `<small>azar: ${fmtPct(esp)}</small>` : ""}</div>`).join("")}</div>`;
+}
+
+function renderRegistro(){
+  const el = $("#registro"); if (!el || !S.ordAll.length) return;
+  const L = LOT(), ord = S.ordAll, clave = S.lot + ":" + ord.length + ":" + ord[ord.length-1].fecha;
+  if (!REG.cache[clave]) el.innerHTML = `<div class="empty">Calculando qué habría dicho la página antes de cada uno de los últimos sorteos…</div>`;
+  calcularRegistro(clave, ord, 12, (previos, real) => {
+    const A = analizar(previos, L.dia, 0), nums = [A.consenso.num, ...A.top5.map(t => t.num)];
+    return { fecha: real.fecha, real: real.numero, consenso: A.consenso.num, top5: A.top5.map(t => t.num), r: nivelLoteria(nums, real.numero),
+      esp2: new Set(nums.map(x => x.slice(-2))).size / 100, esp1: new Set(nums.map(x => x.slice(-1))).size / 10 };
+  }, filas => {
+    if (S.lot === "baloto" || clave !== S.lot + ":" + S.ordAll.length + ":" + S.ordAll[S.ordAll.length-1].fecha) return;
+    const n = filas.length, sum = f => filas.reduce((s,x) => s + f(x), 0);
+    el.innerHTML = resumenTabla(filas, [
+      ["sorteos revisados", n],
+      ["con las 2 últimas cifras o más", sum(x => x.r.nivel >= 3 ? 1 : 0), sum(x => x.esp2)],
+      ["con la última cifra o más", sum(x => x.r.nivel >= 2 && x.r.nivel !== 1 ? 1 : 0), sum(x => x.esp1)],
+      ["número exacto", sum(x => x.r.nivel === 5 ? 1 : 0), n * 6 / 10000],
+    ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Más votada</th><th class="detalle-cel">5 números</th><th>¿Le atinamos?</th></tr></thead><tbody>
+      ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short",year:"2-digit"})}</td><td class="mono"><b>${x.real}</b></td>
+        <td class="mono">${marcar(x.consenso, x.real)}</td>
+        <td class="mono detalle-cel">${x.top5.map(t => marcar(t, x.real)).join(" ")}</td>
+        <td><span class="pill ${x.r.cls}">${x.r.txt}</span></td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="note">Se cuenta el mejor resultado entre la más votada y los 5 números. En verde, las cifras que coincidieron en su lugar. “Azar” es lo que se esperaría con números escogidos al azar.</p>`;
+  });
+}
+
+function renderBRegistro(){
+  const el = $("#b-registro"), draws = BAL.data[BAL.juego]; if (!el || !draws) return;
+  const ord = [...draws].sort((x,y) => x.fecha < y.fecha ? -1 : 1), clave = BAL.juego + ":" + ord.length + ":" + ord[ord.length-1].fecha;
+  if (!REG.cache[clave]) el.innerHTML = `<div class="empty">Calculando qué habría dicho la página antes de cada uno de los últimos sorteos…</div>`;
+  calcularRegistro(clave, ord, 12, (previos, real) => {
+    const A = analizarBaloto(previos, 0), C = consensoBaloto(A, real.fecha);
+    const cons = { n: C.n.map(x => x.v), sb: C.sb.v };
+    return { fecha: real.fecha, real, cons, r: nivelBaloto([cons, ...A.jugadas], real) };
+  }, filas => {
+    if (S.lot !== "baloto" || clave !== BAL.juego + ":" + (BAL.data[BAL.juego]||[]).length + ":" + ord[ord.length-1].fecha) return;
+    const n = filas.length, sum = f => filas.reduce((s,x) => s + f(x), 0);
+    const pk = k => comb(5,k)*comb(38,5-k)/comb(43,5), p3 = pk(3) + pk(4) + pk(5);
+    const bolasMarcadas = (ns, sb, real) => `<span class="bolas chicas">${ns.map(v => `<span class="bola${real.n.includes(v) ? " acierto" : ""}">${dos(v)}</span>`).join("")}<span class="bola sb${sb === real.sb ? " acierto" : ""}">${dos(sb)}</span></span>`;
+    el.innerHTML = resumenTabla(filas, [
+      ["sorteos revisados", n],
+      ["con 3 números o más", sum(x => x.r.k >= 3 ? 1 : 0), n * (1 - Math.pow(1 - p3, 6))],
+      ["con la superbalota", sum(x => x.r.sb ? 1 : 0), n * (1 - Math.pow(15/16, 6))],
+    ]) + `<div class="scroll"><table class="reg"><thead><tr><th>Sorteo</th><th>Cayó</th><th>Más votada</th><th>¿Le atinamos?</th></tr></thead><tbody>
+      ${filas.map(x => `<tr><td>${fmtFecha(x.fecha,{day:"numeric",month:"short",year:"2-digit"})}</td>
+        <td>${bolas(x.real.n, x.real.sb, "chicas")}</td>
+        <td>${bolasMarcadas(x.cons.n, x.cons.sb, x.real)}</td>
+        <td><span class="pill ${x.r.cls}">${x.r.txt}</span></td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="note">Se cuenta la mejor jugada entre la más votada y las 5 jugadas. Las balotas acertadas aparecen en verde. “Azar” es lo que se esperaría con 6 jugadas al azar.</p>`;
+  });
+}
 
 /* ---------- Vista simple en celular ---------- */
 const mqMovil = window.matchMedia("(max-width: 700px)");
