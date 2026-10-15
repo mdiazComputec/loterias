@@ -131,6 +131,7 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .stack{display:grid;gap:28px}
 .solo-movil{display:none}
 .reg b.ok,.calc b.ok{color:var(--good);font-weight:800}
+.note.adapt{background:var(--accent-soft);border-radius:6px;padding:8px 10px;color:var(--ink)}
 .tagj{display:inline-block;font-family:var(--f-body);font-size:.72rem;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;vertical-align:middle;letter-spacing:0}
 .tagj.lider{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 #jug-stats:empty,#b-jug-stats:empty{display:none}
@@ -514,13 +515,13 @@ const argmaxNum = sc => sc.map(p => p.indexOf(Math.max(...p))).join("");
 const posHits = (p, real) => [...p].filter((c,i) => c === real[i]).length;
 
 const METODOS = { caliente:[1,0,0], reciente:[0,1,0], atrasado:[0,0,1] };
-const NOMBRES = { caliente:"Más frecuente", reciente:"Racha últimos 20", atrasado:"Más atrasado", combinado:"Modelo combinado" };
+const NOMBRES = { caliente:"Más frecuente", reciente:"Racha últimos 20", atrasado:"Más atrasado", combinado:"Modo adaptativo" };
 const GRID = [];
 for (let a=0;a<=4;a++) for (let b=0;b<=4-a;b++) GRID.push([a/4, b/4, (4-a-b)/4]);
 
 // Votación: cada método propone un número y en cada posición gana el dígito con más votos
 function consensoLoteria(A){
-  const fuentes = [["Más frecuente", A.metodos.caliente], ["Racha reciente", A.metodos.reciente], ["Más atrasado", A.metodos.atrasado], ["Modelo combinado", A.top5[0].num]];
+  const fuentes = [["Más frecuente", A.metodos.caliente], ["Racha reciente", A.metodos.reciente], ["Más atrasado", A.metodos.atrasado], ["Modo adaptativo", A.top5[0].num]];
   if (A.seq) fuentes.push(["Secuencia de dígitos", A.seq.pred]);
   if (A.pat) fuentes.push(["Patrón entre sorteos", A.pat.best.pred]);
   const sc = digitScores(A.st, A.w);
@@ -531,6 +532,48 @@ function consensoLoteria(A){
     return { digito: orden[0], votos: votos[orden[0]] };
   });
   return { num: pos.map(p => p.digito).join(""), pos, total: fuentes.length };
+}
+// Modo adaptativo: 8 formas de ordenar las cifras; en cada sorteo manda la que más acertó la 1ª cifra en los últimos 30 sorteos
+const MET_ORDEN = [
+  ["comb", "Combinado (frecuencia + racha + atraso)"],
+  ["f", "Frecuencia de toda la historia"],
+  ["f10", "Frecuencia de los últimos 10"],
+  ["f20", "Frecuencia de los últimos 20"],
+  ["f50", "Frecuencia de los últimos 50"],
+  ["atr", "Más atrasado"],
+  ["frio", "Menos frecuente (frío)"],
+  ["mk", "Secuencia (qué dígito sigue)"],
+];
+const VENT_ADAPT = 30;
+function adaptativo(H, start){
+  const n = H.length;
+  const f = [0,1,2,3].map(() => Array(10).fill(0)), last = [0,1,2,3].map(() => Array(10).fill(-1));
+  const tr = [0,1,2,3].map(() => DIG.map(() => Array(10).fill(0)));
+  const nm = v => { const mn = Math.min(...v), mx = Math.max(...v); return v.map(x => mx > mn ? (x - mn) / (mx - mn) : 0); };
+  const win = (t, i, w) => { const c = Array(10).fill(0); for (let k = Math.max(0, t - w); k < t; k++) c[+H[k][i]]++; return c; };
+  const ordenes = [], hit1 = MET_ORDEN.map(() => Array(n).fill(0));
+  for (let t = 0; t <= n; t++){
+    const P = [0,1,2,3].map(i => {
+      const fa = f[i], f10 = win(t, i, 10), f20 = win(t, i, 20), f50 = win(t, i, 50);
+      const at = DIG.map(d => last[i][d] < 0 ? t : t - 1 - last[i][d]);
+      const mk = t ? tr[i][+H[t-1][i]] : Array(10).fill(0);
+      const nf = nm(fa), n20 = nm(f20), na = nm(at);
+      return { comb: DIG.map(d => .25*nf[d] + .25*n20[d] + .5*na[d]), f: fa, f10, f20, f50, atr: at, frio: fa.map(x => -x), mk, _desempate: f20 };
+    });
+    ordenes[t] = MET_ORDEN.map(([k]) => P.map(p => DIG.slice().sort((a,b) => p[k][b] - p[k][a] || p._desempate[b] - p._desempate[a] || a - b)));
+    if (t < n){
+      MET_ORDEN.forEach((m, j) => { hit1[j][t] = [0,1,2,3].filter(i => ordenes[t][j][i][0] === +H[t][i]).length; });
+      for (let i = 0; i < 4; i++){ const d = +H[t][i]; f[i][d]++; if (t) tr[i][+H[t-1][i]][d]++; last[i][d] = t; }
+    }
+  }
+  const puntos = (j, t) => { let v = 0; for (let u = Math.max(0, t - VENT_ADAPT); u < t; u++) v += hit1[j][u]; return v; };
+  const elegir = t => { let best = 0, bv = -1; MET_ORDEN.forEach((m, j) => { const v = puntos(j, t); if (v > bv){ bv = v; best = j; } }); return best; };
+  const cinco = (t, j) => [0,1,2,3,4].map(r => ordenes[t][j].map(o => o[r]).join(""));
+  const porT = {};
+  for (let t = start; t < n; t++){ const j = elegir(t); porT[t] = { j, t5: cinco(t, j) }; }
+  const jc = elegir(n);
+  return { porT, actual: { j: jc, nom: MET_ORDEN[jc][1], t5: cinco(n, jc) }, vent: Math.min(VENT_ADAPT, n),
+    ranking: MET_ORDEN.map(([k, nom], j) => ({ nom, v: puntos(j, n) })).sort((a,b) => b.v - a.v) };
 }
 // 5 números que no repiten dígito en la misma posición: el n-ésimo usa el n-ésimo mejor dígito de cada posición
 function top5Div(sc){
@@ -575,6 +618,17 @@ function analizar(sorteos, dia = 4, ventana = 0){
   const valor = s => sc[0][+s[0]]*sc[1][+s[1]]*sc[2][+s[2]]*sc[3][+s[3]];
   const lista = top5Div(sc), top = valor(lista[0]);
   res.top5 = lista.map(num => ({ num, idx: valor(num)/top*100 }));
+  const AD = adaptativo(H, start);
+  res.adapt = AD;
+  res.predHist = {}; let adHits = 0, adBest = 0;
+  for (let t = start; t < n; t++){
+    const q = AD.porT[t];
+    res.predHist[ord[t].fecha] = { p: q.t5[0], t5: q.t5, metodo: MET_ORDEN[q.j][1] };
+    adHits += posHits(q.t5[0], H[t]); adBest += Math.max(...q.t5.map(x => posHits(x, H[t])));
+  }
+  res.backtest.filas.find(f => f.k === "combinado").hits = adHits;
+  res.backtest.mejor5 = adBest;
+  res.top5 = AD.actual.t5.map((num, i) => ({ num, idx: 100 - i * 15 }));
   res.metodos.combinado = res.top5[0].num;
   res.pat = patrones(H);
   res.sesgo = sesgo(H);
@@ -702,15 +756,17 @@ function renderPronostico(A){
     <div id="mejor-metodo">${bloqueMejorLot(A)}</div>
     <div>
       <h3 style="margin-bottom:10px">5 números para jugar</h3>
+      ${A.adapt ? `<p class="note adapt">Hoy manda <b>${A.adapt.actual.nom}</b>: es la forma de ordenar que más acertó la 1ª cifra en los últimos ${A.adapt.vent} sorteos (${A.adapt.ranking[0].v} de ${A.adapt.vent * 4} cifras; el azar da ${Math.round(A.adapt.vent * 4 / 10)}). Cambia sola con cada sorteo nuevo.</p>` : ""}
       <ol class="top5">${A.top5.map((t,i) => `
         <li><span class="rk">${i+1}</span><span class="n">${t.num}${i === estadJugadasLot().lider ? ` <span class="tagj lider">más atina</span>` : ""}</span>
           <span class="bar"><span style="width:${t.idx.toFixed(1)}%"></span></span>
           <span class="pct">${Math.round(t.idx)}</span></li>`).join("")}
       </ol>
+      ${A.adapt ? `<div class="detalle"><div class="scroll"><table class="rank" style="margin-top:8px"><thead><tr><th>Forma de ordenar</th><th class="num">1ª cifra acertada (últimos ${A.adapt.vent})</th></tr></thead><tbody>${A.adapt.ranking.map((r,i) => `<tr${i === 0 ? ' class="lider"' : ""}><td>${r.nom}</td><td class="num mono">${r.v}</td></tr>`).join("")}<tr><td class="muted">Azar (referencia)</td><td class="num mono muted">${Math.round(A.adapt.vent * 4 / 10)}</td></tr></tbody></table></div></div>` : ""}
       <p class="note detalle" style="margin-top:8px">Cada número usa un dígito distinto en cada posición: el 1º toma el mejor dígito de cada posición, el 2º el segundo mejor, y así. Juntos cubren 5 de los 10 dígitos en cada posición. El índice (100 = el mejor) compara los números entre sí; no es un porcentaje de que caigan.</p>
     </div>
     <div class="chips detalle">${Object.entries(A.metodos).filter(([k]) => k !== "combinado").map(([k,v]) => `<span class="chip">${NOMBRES[k]} <b>${v}</b></span>`).join("")}</div>
-    <p class="note detalle">Pesos aprendidos de tus datos: frecuencia ${w[0]}%, racha reciente ${w[1]}%, atraso ${w[2]}%. Probado sorteo a sorteo sin mirar el futuro, el número principal acertó ${bc.hits} cifras en ${A.backtest.pruebas} sorteos; el azar da unas ${Math.round(A.backtest.esperado)}. Con los 5 números, el mejor de ellos acertó en promedio ${fmtPct(A.backtest.mejor5/A.backtest.pruebas)} cifras por sorteo, contra ${fmtPct(A.backtest.azar5/A.backtest.pruebas)} de 5 números al azar.</p>
+    <p class="note detalle">Probado sorteo a sorteo sin mirar el futuro, el número principal del modo adaptativo acertó ${bc.hits} cifras en ${A.backtest.pruebas} sorteos; el azar da unas ${Math.round(A.backtest.esperado)}. Con los 5 números, el mejor de ellos acertó en promedio ${fmtPct(A.backtest.mejor5/A.backtest.pruebas)} cifras por sorteo, contra ${fmtPct(A.backtest.azar5/A.backtest.pruebas)} de 5 números al azar.</p>
     ${renderComparacion(A)}
     <div class="actions">
       <button class="primary" id="b-save" ${S.db && S.canWrite ? "" : "disabled"}>${guardado ? "Actualizar pronóstico guardado" : `Guardar pronóstico para este ${LOT().diaNombre}`}</button>
@@ -939,14 +995,14 @@ function renderHist(A){
       ["el mejor de los 5 con al menos 1 cifra en su lugar", `${Math.round(n1/con.length*100)}%`, `${Math.round((1 - Math.pow(0.5,4))*100)}%`],
       ["el mejor de los 5 con las 2 últimas cifras", n2, esp2],
       ["número exacto", nx, con.length*5/10000],
-    ]) + `<p class="note">Para cada sorteo se calcularon 5 números solo con los sorteos anteriores. Se muestra el que más se acercó; en verde, las cifras que coincidieron en su lugar.</p>` : "")
+    ]) + `<p class="note">Para cada sorteo se calcularon 5 números solo con los sorteos anteriores, usando la forma de ordenar que mejor iba en ese momento (modo adaptativo). Se muestra el que más se acercó; en verde, las cifras que coincidieron en su lugar.</p>` : "")
   + `<table class="reg"><thead><tr><th>Fecha</th><th>Cayó</th><th>Serie</th><th>Mejor de los 5</th><th class="detalle-cel">Los 5 calculados</th></tr></thead><tbody>${filas.map(s => {
     const q = P[s.fecha], f = fmtFecha(s.fecha,{day:"numeric",month:"short",year:"numeric"});
     if (!q) return `<tr><td>${f}</td><td class="mono"><b>${esc(s.numero)}</b></td><td class="mono muted">${esc(s.serie)}</td><td class="muted" style="font-size:.8rem">Sin datos previos</td><td class="detalle-cel muted">—</td></tr>`;
     const b = B(s), r = nivelLoteria([b], s.numero);
     return `<tr><td>${f}</td><td class="mono"><b>${esc(s.numero)}</b></td><td class="mono muted">${esc(s.serie)}</td>
       <td>${tagsJ(empatados(q.t5, y => puntosL(y, s.numero)), "N.º")} <span class="mono">${marcar(b, s.numero)}</span> <span class="pill ${r.cls}">${r.txt}</span></td>
-      <td class="mono detalle-cel">${q.t5.map(x => marcar(x, s.numero)).join(" ")}</td></tr>`;
+      <td class="mono detalle-cel">${q.t5.map(x => marcar(x, s.numero)).join(" ")}${q.metodo ? `<br><small class="muted" style="font-family:var(--f-body)">${q.metodo}</small>` : ""}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -1517,7 +1573,7 @@ const marcar = (pred, real) => [...pred].map((c,i) => c === real[i] ? `<b class=
 
 const MET_L = [
   ["consenso", "Más votada", A => A.consenso.num],
-  ["combinado", "Modelo combinado", A => A.top5[0].num],
+  ["combinado", "Modo adaptativo", A => A.top5[0].num],
   ["caliente", "Más frecuente", A => A.metodos.caliente],
   ["reciente", "Racha reciente", A => A.metodos.reciente],
   ["atrasado", "Más atrasado", A => A.metodos.atrasado],
