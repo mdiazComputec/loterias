@@ -135,6 +135,10 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .pop-pie{margin-top:6px;font-size:.75rem;color:var(--muted)}
 @media (hover:hover){.recent > li.con-pop:hover .pop{display:block;position:absolute;right:0;top:calc(100% - 6px);width:min(400px,92vw)}}
 .recent > li.abierto .pop{display:block}
+.diez{border:1px solid var(--line);border-radius:6px;padding:8px 12px;margin-top:10px}
+.diez summary{cursor:pointer;font-weight:700}
+.diez-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px 10px;margin-block:10px}
+.diez-n b{font-size:1.15rem;letter-spacing:.08em}
 .tagj.lider{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 #jug-stats:empty,#b-jug-stats:empty{display:none}
 .calc{display:block;font-size:.72rem;color:var(--muted);font-weight:400;letter-spacing:0}
@@ -582,10 +586,11 @@ function adaptativo(H, start){
   const puntos = (j, t) => { let v = 0; for (let u = Math.max(0, t - VENT_ADAPT); u < t; u++) v += hit1[j][u]; return v; };
   const elegir = t => { let best = 0, bv = -1; MET_ORDEN.forEach((m, j) => { const v = puntos(j, t); if (v > bv){ bv = v; best = j; } }); return best; };
   const cinco = (t, j) => [0,1,2,3,4].map(r => ordenes[t][j].map(o => o[r]).join(""));
+  const diez = (t, j) => DIG.map(r => ordenes[t][j].map(o => o[r]).join(""));
   const porT = {};
-  for (let t = start; t < n; t++){ const j = elegir(t); porT[t] = { j, t5: cinco(t, j) }; }
+  for (let t = start; t < n; t++){ const j = elegir(t); porT[t] = { j, t5: cinco(t, j), t10: diez(t, j) }; }
   const jc = elegir(n);
-  return { porT, actual: { j: jc, nom: MET_ORDEN[jc][1], t5: cinco(n, jc) }, vent: Math.min(VENT_ADAPT, n),
+  return { porT, actual: { j: jc, nom: MET_ORDEN[jc][1], t5: cinco(n, jc), t10: diez(n, jc) }, vent: Math.min(VENT_ADAPT, n),
     ranking: MET_ORDEN.map(([k, nom], j) => ({ nom, v: puntos(j, n) })).sort((a,b) => b.v - a.v) };
 }
 // 5 números que no repiten dígito en la misma posición: el n-ésimo usa el n-ésimo mejor dígito de cada posición
@@ -636,7 +641,7 @@ function analizar(sorteos, dia = 4, ventana = 0){
   res.predHist = {}; let adHits = 0, adBest = 0;
   for (let t = start; t < n; t++){
     const q = AD.porT[t];
-    res.predHist[ord[t].fecha] = { p: q.t5[0], t5: q.t5, metodo: MET_ORDEN[q.j][1] };
+    res.predHist[ord[t].fecha] = { p: q.t5[0], t5: q.t5, t10: q.t10, metodo: MET_ORDEN[q.j][1] };
     adHits += posHits(q.t5[0], H[t]); adBest += Math.max(...q.t5.map(x => posHits(x, H[t])));
   }
   res.backtest.filas.find(f => f.k === "combinado").hits = adHits;
@@ -775,6 +780,7 @@ function renderPronostico(A){
           <span class="bar"><span style="width:${t.idx.toFixed(1)}%"></span></span>
           <span class="pct">${Math.round(t.idx)}</span></li>`).join("")}
       </ol>
+      ${A.adapt ? bloqueDiez(A) : ""}
       ${A.adapt ? `<div class="detalle"><div class="scroll"><table class="rank" style="margin-top:8px"><thead><tr><th>Forma de ordenar</th><th class="num">1ª cifra acertada (últimos ${A.adapt.vent})</th></tr></thead><tbody>${A.adapt.ranking.map((r,i) => `<tr${i === 0 ? ' class="lider"' : ""}><td>${r.nom}</td><td class="num mono">${r.v}</td></tr>`).join("")}<tr><td class="muted">Azar (referencia)</td><td class="num mono muted">${Math.round(A.adapt.vent * 4 / 10)}</td></tr></tbody></table></div></div>` : ""}
       <p class="note detalle" style="margin-top:8px">Cada número usa un dígito distinto en cada posición: el 1º toma el mejor dígito de cada posición, el 2º el segundo mejor, y así. Juntos cubren 5 de los 10 dígitos en cada posición. El índice (100 = el mejor) compara los números entre sí; no es un porcentaje de que caigan.</p>
     </div>
@@ -790,6 +796,22 @@ function renderPronostico(A){
   $("#b-save").onclick = () => guardarPronostico({}).then(() => msg("#p-msg","Pronóstico guardado.","ok")).catch(e => msg("#p-msg", errDb(e), "err"));
   $("#b-ia").onclick = analizarIA;
   if (!S.sample) $("#b-ia").title = "El análisis con Claude solo funciona dentro de claude.ai";
+}
+
+function bloqueDiez(A){
+  const t10 = A.adapt.actual.t10, P = A.predHist || {};
+  const con = A.ord.filter(s => P[s.fecha] && P[s.fecha].t10);
+  const d2 = con.filter(s => P[s.fecha].t10.some(x => x.slice(-2) === s.numero.slice(-2))).length;
+  const d3 = con.filter(s => P[s.fecha].t10.some(x => x.slice(-3) === s.numero.slice(-3))).length;
+  const ex = con.filter(s => P[s.fecha].t10.includes(s.numero)).length;
+  const d2con5 = con.filter(s => P[s.fecha].t5.some(x => x.slice(-2) === s.numero.slice(-2))).length;
+  const pc = (k, n) => n ? (k / n * 100).toLocaleString("es-CO", { maximumFractionDigits: 1 }) + "%" : "—";
+  return `<details class="diez">
+    <summary>Ver 10 números <span class="muted">(cubren las 10 terminaciones)</span></summary>
+    <div class="diez-lista">${t10.map((x, i) => `<span class="diez-n">${tagJ(i, "N.º")} <b class="mono">${x}</b></span>`).join("")}</div>
+    <p class="note">En cada posición aparecen los 10 dígitos una sola vez, así que uno de estos 10 números <b>siempre</b> tiene la última cifra. Probabilidad: número exacto 0,1% · 2 últimas cifras 10% · última cifra 100%.</p>
+    ${con.length ? `<p class="note">En la historia (${con.length} sorteos, calculados solo con los anteriores): las 2 últimas cifras salieron en <b>${pc(d2, con.length)}</b> de los sorteos con 10 números, contra ${pc(d2con5, con.length)} con 5 · 3 últimas cifras ${d3} veces · exacto ${ex} ${ex === 1 ? "vez" : "veces"}.</p>` : ""}
+  </details>`;
 }
 
 function renderComparacion(A){
