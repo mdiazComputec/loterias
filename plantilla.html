@@ -1229,7 +1229,8 @@ function analizarBaloto(draws, ventana){
     hitsS += rankBal(scoreBal(stS, GRID[bs]))[0] === SB[t][0] ? 1 : 0;
     const jug = [0,1,2,3,4].map(j => [0,1,2,3,4].map(k => rk[j + 5*k]));
     const rsT = rankBal(scoreBal(stS, GRID[bs]));
-    res.predHist[ord[t].fecha] = { jugadas: jug.map((x,j) => ({ n: x.slice().sort((a,b) => a-b), sb: rsT[j] })) };
+    res.predHist[ord[t].fecha] = { jugadas: jug.map((x,j) => ({ n: x.slice().sort((a,b) => a-b), sb: rsT[j] })),
+      jugadas8: [0,1,2,3,4,5,6,7].map(j => ({ n: [0,1,2,3,4].map(k => rk[j + 8*k]).sort((a,b) => a-b), sb: rsT[j] })) };
     const mj = Math.max(...jug.map(x => inter(x, real))); mejor5 += mj; tres5 += mj >= 3 ? 1 : 0;
     const ma = Math.max(...[0,1,2,3,4].map(() => inter(azarJugada(), real))); azar5 += ma; tresAz += ma >= 3 ? 1 : 0;
     GRID.forEach((w,i) => {
@@ -1244,6 +1245,7 @@ function analizarBaloto(draws, ventana){
   res.stN = stBal(NS, 43); res.stS = stBal(SB, 16);
   const rk = rankBal(scoreBal(res.stN, res.wN)), rs = rankBal(scoreBal(res.stS, res.wS));
   res.jugadas = [0,1,2,3,4].map(j => ({ n: [0,1,2,3,4].map(k => rk[j + 5*k]).sort((a,b) => a-b), sb: rs[j] }));
+  res.jugadas8 = [0,1,2,3,4,5,6,7].map(j => ({ n: [0,1,2,3,4].map(k => rk[j + 8*k]).sort((a,b) => a-b), sb: rs[j] }));
   res.metodos = {
     frecuentes: rankBal(scoreBal(res.stN,[1,0,0])).slice(0,5).sort((a,b)=>a-b),
     racha: rankBal(scoreBal(res.stN,[0,1,0])).slice(0,5).sort((a,b)=>a-b),
@@ -1331,6 +1333,7 @@ function renderBPron(A){
     <div>
       <h3 style="margin-bottom:10px">5 jugadas que no repiten ningún número</h3>
       <ol class="jugadas">${(() => { const L = estadJugadasBal().lider; return A.jugadas.map((j,i) => `<li>${bolas(j.n, j.sb)}${i === L ? ` <span class="tagj lider">más atina</span>` : ""}</li>`).join(""); })()}</ol>
+      ${bloqueOcho(A)}
       <p class="note detalle" style="margin-top:8px">Entre las 5 cubren 25 de las 43 balotas y 5 superbalotas distintas. Se reparten en orden: la 1ª jugada toma las balotas con puntaje 1, 6, 11, 16 y 21, la 2ª las de puntaje 2, 7, 12…</p>
     </div>
     <div class="chips detalle">
@@ -1422,6 +1425,40 @@ function activarPops(lista){
       if (!abierto) li.classList.add("abierto"); };
     li.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); li.click(); } };
   });
+}
+
+// Probabilidad exacta de que alguna de k jugadas sin números repetidos tenga 2+ o 3+ aciertos
+function probDisjuntas(k){
+  const T = comb(43,5), resto = 43 - 5*k; let p2 = 0, p3 = 0;
+  const rec = (i, quedan, maxi, maneras) => {
+    if (i === k){ if (quedan <= resto){ const w = maneras * comb(resto, quedan); if (maxi >= 2) p2 += w; if (maxi >= 3) p3 += w; } return; }
+    for (let a = 0; a <= Math.min(5, quedan); a++) rec(i + 1, quedan - a, Math.max(maxi, a), maneras * comb(5, a));
+  };
+  rec(0, 5, 0, 1);
+  return { p2: p2 / T, p3: p3 / T, sb: Math.min(k, 16) / 16 };
+}
+const PRECIO_BALOTO = 6000, PRECIO_REVANCHA = 3000;
+function bloqueOcho(A){
+  if (!A.jugadas8) return "";
+  const pc = x => (x * 100).toLocaleString("es-CO", { maximumFractionDigits: x < 0.1 ? 2 : 1 }) + "%";
+  const dos = (p, r) => r ? 1 - Math.pow(1 - p, 2) : p;
+  const fila = (nom, k, rev, mejor) => { const q = probDisjuntas(k);
+    return `<tr${mejor ? ' class="lider"' : ""}><td>${nom}${mejor ? ' <span class="tagj lider">más rinde por peso</span>' : ""}</td><td class="num mono">$${fmtN(k * (PRECIO_BALOTO + (rev ? PRECIO_REVANCHA : 0)))}</td><td class="num mono">${pc(dos(q.p2, rev))}</td><td class="num mono">${pc(dos(q.p3, rev))}</td><td class="num mono">${pc(dos(q.sb, rev))}</td></tr>`; };
+  const P = A.predHist || {}, real = new Map((BAL.data[BAL.juego] || []).map(d => [d.fecha, d]));
+  const con = Object.keys(P).filter(f => real.has(f) && P[f].jugadas8);
+  const cuenta = (key, min) => con.filter(f => P[f][key].some(j => inter(j.n, real.get(f).n) >= min)).length;
+  const cuentaSB = key => con.filter(f => P[f][key].some(j => j.sb === real.get(f).sb)).length;
+  return `<details class="diez">
+    <summary>Ver 8 jugadas y cómo subir la probabilidad</summary>
+    <ol class="jugadas" style="margin-top:10px">${A.jugadas8.map(j => `<li>${bolas(j.n, j.sb)}</li>`).join("")}</ol>
+    <p class="note">Estas 8 jugadas no repiten ningún número: cubren 40 de las 43 balotas y 8 superbalotas distintas (la mitad de las 16). Son un juego aparte de las 5 de arriba.</p>
+    <div class="scroll"><table class="rank"><thead><tr><th>Opción</th><th class="num">Costo</th><th class="num">2+ números en alguna</th><th class="num">3+ números en alguna</th><th class="num">Superbalota en alguna</th></tr></thead><tbody>
+      ${fila("1 jugada", 1, false)}${fila("5 jugadas", 5, false)}${fila("5 jugadas + Revancha", 5, true, true)}${fila("8 jugadas", 8, false)}${fila("8 jugadas + Revancha", 8, true)}
+    </tbody></table></div>
+    <p class="note">Probabilidades exactas para jugadas sin números repetidos. La Revancha juega los mismos números en un segundo sorteo por $${fmtN(PRECIO_REVANCHA)} más por jugada: por eso “5 jugadas + Revancha” da más probabilidad que 8 jugadas de Baloto y cuesta menos (sus premios son más bajos). Precios de baloto.com: $${fmtN(PRECIO_BALOTO)} el Baloto y $${fmtN(PRECIO_REVANCHA)} la Revancha.</p>
+    ${con.length ? `<p class="note">Comprobado con la historia (${con.length} sorteos, calculados solo con los anteriores): alguna jugada con 2+ números en ${pc(cuenta("jugadas", 2) / con.length)} de los sorteos con 5 jugadas y ${pc(cuenta("jugadas8", 2) / con.length)} con 8 · 3+ números ${cuenta("jugadas", 3)} veces con 5 y ${cuenta("jugadas8", 3)} con 8 · superbalota ${pc(cuentaSB("jugadas") / con.length)} con 5 y ${pc(cuentaSB("jugadas8") / con.length)} con 8.</p>` : ""}
+    <p class="note">Consejo para cobrar más si ganas: mucha gente juega fechas (1 a 31). Preferir números del 32 al 43 no sube la probabilidad, pero reduce el riesgo de compartir el premio con otros ganadores.</p>
+  </details>`;
 }
 
 function renderBCinco(){
