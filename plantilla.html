@@ -124,6 +124,17 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .s5-lista li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:4px 6px;border-radius:6px}
 .s5-lista li.mejor-j{background:var(--accent-soft);outline:1px solid var(--accent)}
 #b-mas{justify-self:start}
+.recent > li.con-pop{position:relative;cursor:pointer}
+.recent > li.con-pop:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.pop{display:none;grid-column:1/-1;background:var(--surface);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:40;cursor:default;font-size:.85rem}
+.pop-t{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.pop-t b{color:var(--ink);letter-spacing:.08em}
+.pop-f{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 6px;border-radius:6px}
+.pop-f.mejor-j{background:var(--accent-soft);outline:1px solid var(--accent)}
+.pop-n{font-size:1.05rem;letter-spacing:.08em}
+.pop-pie{margin-top:6px;font-size:.75rem;color:var(--muted)}
+@media (hover:hover){.recent > li.con-pop:hover .pop{display:block;position:absolute;right:0;top:calc(100% - 6px);width:min(400px,92vw)}}
+.recent > li.abierto .pop{display:block}
 .tagj.lider{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 #jug-stats:empty,#b-jug-stats:empty{display:none}
 .calc{display:block;font-size:.72rem;color:var(--muted);font-weight:400;letter-spacing:0}
@@ -267,6 +278,7 @@ select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:
       </details>
       <div>
         <h3>Historial</h3>
+        <p class="note" style="margin:2px 0 6px">Pasa el mouse o toca un sorteo para ver las 5 opciones que había.</p>
         <ul class="recent" id="recent"><li class="muted" style="display:block">Aún no hay sorteos cargados.</li></ul>
       </div>
     </aside>
@@ -386,6 +398,7 @@ select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:
         </form>
         <div>
           <h3>Historial</h3>
+        <p class="note" style="margin:2px 0 6px">Pasa el mouse o toca un sorteo para ver las 5 opciones que había.</p>
           <ul class="recent" id="b-recent"><li class="muted" style="display:block">Aún no hay sorteos cargados.</li></ul>
         </div>
       </aside>
@@ -917,7 +930,8 @@ function renderRecent(A){
   if (!rows.length){ el.innerHTML = `<li class="muted" style="display:block">Aún no hay sorteos. Agrega el primero con el formulario.</li>`; return; }
   el.innerHTML = rows.map(s => `<li><span>${fmtFecha(s.fecha,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span>
     <span class="n">${esc(s.numero)}${(() => { const HA = (S.A && !S.A.ventana) ? S.A : (S.Aalt || S.A), q = HA && HA.predHist && HA.predHist[s.fecha]; if (!q) return ""; const b = mejorDe5(q.t5, s.numero), e = empatados(q.t5, x => puntosL(x, s.numero)); return `<small class="calc">mejor de 5 (n.º ${e.map(i => i+1).join(" y ")}): <span class="mono">${marcar(b, s.numero)}</span></small>`; })()}</span><span class="mono muted">${esc(s.serie)}</span>
-    <button class="del" data-f="${s.fecha}" aria-label="Borrar sorteo del ${s.fecha}" ${S.canWrite ? "" : "hidden"}>×</button></li>`).join("");
+    <button class="del" data-f="${s.fecha}" aria-label="Borrar sorteo del ${s.fecha}" ${S.canWrite ? "" : "hidden"}>×</button>${popLot(s)}</li>`).join("");
+  activarPops(el);
   el.querySelectorAll(".del").forEach(b => b.onclick = () => {
     if (!b.classList.contains("confirm")){ b.classList.add("confirm"); b.textContent = "¿Borrar?"; setTimeout(() => { b.classList.remove("confirm"); b.textContent = "×"; }, 3000); return; }
     S.db.doc(LOT().col+"/"+b.dataset.f).delete().catch(e => msg("#f-msg", errDb(e), "err"));
@@ -1360,6 +1374,34 @@ Responde solo con JSON con esta forma exacta:
   }
 }
 
+// Ventanita del historial: las 5 opciones que había para ese sorteo
+function popLot(s){
+  const q = histLot()[s.fecha]; if (!q) return "";
+  const m = empatados(q.t5, x => puntosL(x, s.numero));
+  return `<div class="pop"><div class="pop-t">Las 5 opciones para el ${fmtFecha(s.fecha,{day:"numeric",month:"short"})} · cayó <b class="mono">${esc(s.numero)}</b></div>
+    ${q.t5.map((x,i) => { const nv = nivelLoteria([x], s.numero);
+      return `<div class="pop-f${m.includes(i) ? " mejor-j" : ""}">${tagJ(i, "N.º")} <span class="mono pop-n">${marcar(x, s.numero)}</span> <span class="pill ${nv.cls}">${nv.txt}</span></div>`; }).join("")}
+    ${q.metodo ? `<div class="pop-pie">Ese día mandaba: ${q.metodo}</div>` : ""}</div>`;
+}
+function popBal(d){
+  const q = ((BAL.A && BAL.A.predHist) || {})[d.fecha]; if (!q) return "";
+  const m = empatados(q.jugadas, j => puntosB(j, d));
+  return `<div class="pop"><div class="pop-t">Las 5 jugadas para el ${fmtFecha(d.fecha,{day:"numeric",month:"short"})}</div>
+    ${q.jugadas.map((j,i) => { const nv = nivelBaloto([j], d);
+      return `<div class="pop-f${m.includes(i) ? " mejor-j" : ""}">${tagJ(i, "Jugada")} ${bolasVs(j, d)} <span class="pill ${nv.cls}">${nv.txt}</span></div>`; }).join("")}</div>`;
+}
+function activarPops(lista){
+  lista.querySelectorAll(":scope > li").forEach(li => {
+    if (!li.querySelector(".pop")) return;
+    li.classList.add("con-pop"); li.tabIndex = 0;
+    li.onclick = e => { if (e.target.closest("button") || e.target.closest(".pop")) return;
+      const abierto = li.classList.contains("abierto");
+      lista.querySelectorAll(":scope > li.abierto").forEach(x => x.classList.remove("abierto"));
+      if (!abierto) li.classList.add("abierto"); };
+    li.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); li.click(); } };
+  });
+}
+
 function renderBCinco(){
   const el = $("#b-cinco"), btn = $("#b-mas"); if (!el) return;
   const P = (BAL.A && BAL.A.predHist) || {}, real = new Map((BAL.data[BAL.juego] || []).map(d => [d.fecha, d]));
@@ -1379,10 +1421,11 @@ function renderBCinco(){
 }
 
 function renderBRecent(){
+  setTimeout(() => activarPops($("#b-recent")), 0);
   const ord = [...(BAL.data[BAL.juego]||[])].sort((x,y) => x.fecha < y.fecha ? 1 : -1).slice(0,12);
   const P = (BAL.A && BAL.A.predHist) || {};
   const vs = (j, real) => `<span class="bolas chicas">${j.n.map(v => `<span class="bola${real.n.includes(v) ? " acierto" : ""}">${dos(v)}</span>`).join("")}<span class="bola sb${j.sb === real.sb ? " acierto" : ""}">${dos(j.sb)}</span></span>`;
-  $("#b-recent").innerHTML = ord.length ? ord.map(d => `<li style="grid-template-columns:1fr auto"><span>${fmtFecha(d.fecha,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}${P[d.fecha] ? (() => { const bj = mejorJugada(P[d.fecha].jugadas, d); const e = empatados(P[d.fecha].jugadas, j => puntosB(j, d)); return `<br><small class="muted">${e.length > 1 ? "jugadas" : "jugada"} ${e.map(i => i+1).join(" y ")} · ${nivelBaloto([bj], d).txt.toLowerCase()}</small>`; })() : ""}</span><span class="bstack">${bolas(d.n, d.sb, "chicas")}${P[d.fecha] ? bolasVs(mejorJugada(P[d.fecha].jugadas, d), d) : ""}</span></li>`).join("")
+  $("#b-recent").innerHTML = ord.length ? ord.map(d => `<li style="grid-template-columns:1fr auto"><span>${fmtFecha(d.fecha,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}${P[d.fecha] ? (() => { const bj = mejorJugada(P[d.fecha].jugadas, d); const e = empatados(P[d.fecha].jugadas, j => puntosB(j, d)); return `<br><small class="muted">${e.length > 1 ? "jugadas" : "jugada"} ${e.map(i => i+1).join(" y ")} · ${nivelBaloto([bj], d).txt.toLowerCase()}</small>`; })() : ""}</span><span class="bstack">${bolas(d.n, d.sb, "chicas")}${P[d.fecha] ? bolasVs(mejorJugada(P[d.fecha].jugadas, d), d) : ""}</span>${popBal(d)}</li>`).join("")
     : `<li class="muted" style="display:block">Aún no hay sorteos. Agrega el primero con el formulario.</li>`;
 }
 
