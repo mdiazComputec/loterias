@@ -117,6 +117,13 @@ textarea{font:inherit;font-family:var(--f-mono);font-size:.85rem;padding:9px 10p
 .reg b.ok,.calc b.ok{color:var(--good);font-weight:800}
 .note.adapt{background:var(--accent-soft);border-radius:6px;padding:8px 10px;color:var(--ink)}
 .tagj{display:inline-block;font-family:var(--f-body);font-size:.72rem;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;vertical-align:middle;letter-spacing:0}
+.s5{border-top:1px solid var(--line);padding-block:12px;display:grid;gap:8px}
+.s5:first-child{border-top:none;padding-top:0}
+.s5-cab{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.s5-lista{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.s5-lista li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:4px 6px;border-radius:6px}
+.s5-lista li.mejor-j{background:var(--accent-soft);outline:1px solid var(--accent)}
+#b-mas{justify-self:start}
 .tagj.lider{background:var(--accent);border-color:var(--accent);color:var(--surface)}
 #jug-stats:empty,#b-jug-stats:empty{display:none}
 .calc{display:block;font-size:.72rem;color:var(--muted);font-weight:400;letter-spacing:0}
@@ -393,6 +400,16 @@ select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:
     <div id="b-jug-stats"></div>
     <div id="b-registro"><div class="empty">Cargando el registro…</div></div>
   </section>
+
+    <section class="panel" aria-labelledby="t-b5">
+      <div>
+        <div class="eyebrow">Historial de jugadas</div>
+        <h2 id="t-b5">Las 5 jugadas de cada sorteo</h2>
+        <p class="note">Las 5 jugadas que la página tenía para escoger antes de cada sorteo, calculadas solo con los sorteos anteriores. En verde, las balotas que cayeron; la mejor de las 5 va resaltada.</p>
+      </div>
+      <div id="b-cinco"><div class="empty">Cargando…</div></div>
+      <button type="button" id="b-mas" hidden>Ver 20 sorteos más</button>
+    </section>
 
     <section class="panel detalle" aria-labelledby="t-bodds">
       <div>
@@ -1252,7 +1269,7 @@ function renderBaloto(){
     $("#bf-fecha").value = d.toISOString().slice(0,10);
   }
   $("#bf-juego").value = BAL.juego;
-  renderBPron(A); renderJugStatsBal(); renderBRegistro(); renderBRecent(); renderOdds(); renderBFechas(A); renderBFreq(A); renderBSeg(); renderBBt(A);
+  renderBPron(A); renderJugStatsBal(); renderBRegistro(); renderBCinco(); renderBRecent(); renderOdds(); renderBFechas(A); renderBFreq(A); renderBSeg(); renderBBt(A);
 }
 
 function renderBPron(A){
@@ -1341,6 +1358,24 @@ Responde solo con JSON con esta forma exacta:
     renderBPron(A);
     msg("#bb-msg", { not_granted:"No se dio permiso para usar Claude en esta página.", rate_limited:"Se alcanzó el límite de uso. Intenta más tarde.", invalid_json:"Claude respondió en un formato inesperado. Intenta de nuevo." }[e?.code] || (["invalid_argument","quota_exceeded"].includes(e?.code) ? errDb(e) : "No se pudo completar el análisis. Intenta de nuevo."), "err");
   }
+}
+
+function renderBCinco(){
+  const el = $("#b-cinco"), btn = $("#b-mas"); if (!el) return;
+  const P = (BAL.A && BAL.A.predHist) || {}, real = new Map((BAL.data[BAL.juego] || []).map(d => [d.fecha, d]));
+  const fechas = Object.keys(P).filter(f => real.has(f)).sort().reverse();
+  if (!fechas.length){ el.innerHTML = `<div class="empty">Se necesitan al menos 40 sorteos.</div>`; btn.hidden = true; return; }
+  BAL.verN = BAL.verN || 15;
+  el.innerHTML = fechas.slice(0, BAL.verN).map(f => {
+    const r = real.get(f), js = P[f].jugadas, mejores = empatados(js, j => puntosB(j, r));
+    return `<div class="s5">
+      <div class="s5-cab"><b>${fmtFecha(f,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</b><span class="muted">cayó</span>${bolas(r.n, r.sb, "chicas")}</div>
+      <ol class="s5-lista">${js.map((j,i) => { const nv = nivelBaloto([j], r);
+        return `<li class="${mejores.includes(i) ? "mejor-j" : ""}">${tagJ(i, "Jugada")} ${bolasVs(j, r)} <span class="pill ${nv.cls}">${nv.txt}</span></li>`; }).join("")}</ol>
+    </div>`;
+  }).join("");
+  btn.hidden = BAL.verN >= fechas.length;
+  btn.onclick = () => { BAL.verN += 20; renderBCinco(); };
 }
 
 function renderBRecent(){
@@ -1498,7 +1533,7 @@ $("#b-form").addEventListener("submit", async ev => {
 });
 document.querySelectorAll("#vista-baloto .seg button").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.j === BAL.juego) return;
-  BAL.juego = b.dataset.j; $("#bf-fecha").value = ""; renderBaloto();
+  BAL.juego = b.dataset.j; BAL.verN = 15; $("#bf-fecha").value = ""; renderBaloto();
 }));
 
 /* ---------- ¿Qué jugada atina más? ---------- */
